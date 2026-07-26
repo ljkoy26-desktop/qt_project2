@@ -1307,3 +1307,46 @@ import lib 항목과 매칭됨.
 
 ### 파일 복사
 `vcpkg\installed\x64-windows\lib\` → `lib64\protobuf\Release\` (abseil_dll.lib 포함 29개)
+
+---
+
+## [feat] untitled1 — MDI 프레임 골격 구현 (Orange 8.0 참고 이미지 기반)
+
+### 수정 파일
+- `untitled1/mainwindow.h`
+- `untitled1/mainwindow.cpp`
+
+### 변경 배경
+`참고자료/작업지시/MDI 프레임.png` (Orange 8.0 SQL Tool 스크린샷)를 참고하여,
+기본 Qt Widgets 템플릿(`MainWindow`)을 MDI(Multiple Document Interface) 프레임으로 전환.
+이번 작업은 "프레임" 범위로 한정하며, 실제 SQL 편집기/스키마 브라우저/결과 그리드 등의
+세부 기능은 포함하지 않음(추후 별도 작업 예정 — `work 2/3/4.md`).
+
+### 구현 내용
+- `InitMdiArea()` : `QMdiArea`를 생성하여 `setCentralWidget()`으로 중앙 위젯 교체
+- `InitMenuBar()` : 참고 이미지의 상단 메뉴 구성과 동일하게
+  `File / Edit / Action / Option / DBA / Tools / Window / Help` 메뉴 뼈대 추가
+  - `File` : New(신규 SQL Tool), Exit
+  - `Window` : Cascade, Tile, Close All (MDI 표준 동작)
+- `InitToolBar()` : 상단 툴바 1개 추가 (`QStyle` 표준 아이콘 사용 — 별도 리소스 파일 없이 자리표시자 역할)
+- `InitStatusBar()` : 참고 이미지 하단 상태바를 본떠 `Ready` 메시지 라벨 + `AutoCommit is On` / 버전 라벨(permanent widget) 배치
+- `CreateSqlToolChild()` / `OnNewSqlTool()` : 빈 `QTextEdit`를 담은 MDI 자식 창을
+  `SQL Tool:Not Connected/SQL{n}` 제목으로 생성 후 최대화 — 실제 SQL 편집 로직은 미구현(placeholder)
+
+### 코드 스타일
+- Allman 스타일(중괄호 다음 줄), 헝가리언 표기법(`m_p`, `m_n`, 매개변수 `p` 접두) 적용
+- 단일 라인 제어문도 줄바꿈 + 중괄호 유지
+- 두 파일 모두 UTF-8 with BOM으로 저장
+
+### 참고 / 제한 사항
+- `untitled1/build/Desktop_x86_windows_msvc2019_pe_64bit-Debug` 의 CMake 캐시가
+  이전 경로(`H:/Source/GithubDesktop/QT_project/QT_project2/untitled1`)를 참조하고 있어
+  현재 경로에서 "could not load cache" 오류가 발생함(레포 폴더 이동으로 인한 기존 캐시 불일치, 이번 소스 변경과 무관).
+  → 해당 빌드 캐시(`CMakeCache.txt`, `CMakeFiles/`)를 삭제하고 `cmake -S untitled1 -B build/... -G Ninja
+  -DCMAKE_PREFIX_PATH=C:/Qt/6.6.3/msvc2019_64` 로 재구성 후 `ninja` 빌드 → 정상 링크(`untitled1.exe`) 확인.
+  실행 시에도 3초간 크래시 없이 정상 구동됨(첫 번째 예외 없이 정상 종료 확인).
+  → Qt Creator에서도 "Projects" 패널의 해당 Kit에서 "Re-configure with Initial Parameters"
+  1회 수행 필요(캐시가 폴더 이동 이전 기준으로 저장되어 있어 IDE 쪽도 동일하게 재구성 필요).
+- Visual Studio 디버거의 "first chance C++ exception" 경고는 캐시 불일치로 인해 손상된 빌드를
+  디버깅하면서 나온 것으로 보이며, 재구성된 빌드에서는 재현되지 않음(정상 실행 확인).
+- 실제 `git commit`은 수행하지 않음(작업 지시 6번 항목).
