@@ -1,0 +1,35 @@
+
+
+# 목표
+
+
+아래 repeated string sql 부분을 세세히 가져올수 있도록 
+Send, Recv Dlg 에서 OnCopyData , WV_COPYDATA 부분 로직을 강화해줘
+
+message	WVMultiSQLData {
+	WVSessionData session_data	=	1;
+	repeated string sql			=	2;
+}
+
+
+
+
+# 수정 대상
+
+
+
+# 요구사항
+3. 코드 스타일: 
+   - Visual Studio 2019 환경 , C++ 11 표준 사용중
+   - Allman 스타일(중괄호 다음 줄), 헝가리언 표기법 준수.
+   - 한 줄 제어문도 줄바꿈/중괄호 필수.
+   - 인코딩: UTF-8 with BOM.   
+4. 기존 로직 보존 : 기존 프로젝트의 다른 코드는 건드리지 마세요(재탐색 금지).
+  - filelist.txt 파일을 확인하여 현재 디렉터리 구조를 확인하세요.
+5. 응답은 항상 한글로 해주세요.
+6. commit 은 하지 않고 소스 경로내에 참고자료/커밋로그 내에 기록해주세요.
+
+# 출력 형식
+1. 수정된 코드 블록
+2. 적용 후 커밋 로그 (실제 커밋은 하지 마세요)
+3. 부모 다이얼로그에서 데이터를 전달하는 호출부 예시 코드
