@@ -11,6 +11,7 @@ class QListWidgetItem;
 class QLabel;
 class QScrollArea;
 class QPushButton;
+class QIcon;
 QT_END_NAMESPACE
 
 // 타일 리스트 미리보기(드래그 앤 드랍 재정렬) + 전체 스트립 미리보기 + 선택 타일 확대 미리보기를
@@ -23,10 +24,15 @@ class SpriteSheetView : public QWidget
 public:
     explicit SpriteSheetView(QWidget *pParent = nullptr);
 
-    // vecTiles 순서대로 리스트를 채우고 미리보기를 갱신한다.
+    // vecTiles 순서대로 리스트를 채우고 미리보기를 갱신한다. 기존 목록(제외 상태 포함)은 모두 초기화된다.
     void Populate(const QVector<QImage> &vecTiles, int nTileSize);
 
-    // 리스트에 표시된(사용자가 드래그로 재정렬했을 수 있는) 현재 순서를 반환한다.
+    // vecNewTiles를 기존 목록 뒤에 추가한다. 기존 항목의 순서/제외 상태는 그대로 유지된다.
+    // (이미지 이어붙이기 시 사용)
+    void AppendTiles(const QVector<QImage> &vecNewTiles);
+
+    // 리스트에 표시된(사용자가 드래그로 재정렬했을 수 있는) 현재 순서 중,
+    // "제외" 처리되지 않은 타일만 반환한다. 내보내기/미리보기/모델 동기화에 사용된다.
     QVector<QImage> CurrentOrder() const;
 
     void Clear();
@@ -40,6 +46,7 @@ private slots:
     void OnCurrentItemChanged(QListWidgetItem *pCurrent, QListWidgetItem *pPrevious);
     void OnMoveUpClicked();
     void OnMoveDownClicked();
+    void OnToggleExcludeClicked();
 
 private:
     void InitUi();
@@ -47,6 +54,10 @@ private:
     void RenumberItems();
     void MoveCurrentRow(int nOffset);
     void HandleReorderChanged();
+    QIcon BuildTileIcon(const QImage &imageTile) const;
+    QListWidgetItem* CreateTileItem(const QImage &imageTile, int nRow);
+    bool IsItemExcluded(QListWidgetItem *pItem) const;
+    void SetItemExcluded(QListWidgetItem *pItem, bool bExcluded);
 
 private:
     QListWidget *m_pListWidget;
@@ -55,6 +66,7 @@ private:
     QLabel      *m_pZoomLabel;
     QPushButton *m_pMoveUpButton;
     QPushButton *m_pMoveDownButton;
+    QPushButton *m_pToggleExcludeButton;
 
     int          m_nTileSize;
 };

@@ -12,6 +12,7 @@ class QMenu;
 class QLabel;
 class QDragEnterEvent;
 class QDropEvent;
+class QSize;
 QT_END_NAMESPACE
 
 class SpriteSheetView;
@@ -26,6 +27,7 @@ public:
 
 private slots:
     void OnOpenImage();
+    void OnMergeFromFolder();
     void OnExportPng();
     void OnExportBmpTrueColor();
     void OnExportBmp256();
@@ -53,6 +55,9 @@ private:
     void UpdateStatusLabel();
     void LoadImageFile(const QString &strPath);
 
+    // 저장/내보내기/합치기 작업 공통 완료 안내. "해당 폴더 열기" / "확인" 버튼 제공.
+    void ShowCompletionDialog(const QString &strFolderPath, int nImageCount, const QSize &oFinalSize);
+
     bool SaveTileAsPng(const QImage &imageTile, const QString &strFilePath, QString *pStrError);
     bool SaveTileAsBmpTrueColor(const QImage &imageTile, const QString &strFilePath, QString *pStrError);
     bool SaveTileAsBmp256(const QImage &imageTile, const QString &strFilePath, QString *pStrError);
@@ -70,6 +75,7 @@ private:
     QMenu   *m_pExportTilesMenu;
 
     QAction *m_pOpenAction;
+    QAction *m_pMergeFolderAction;
     QAction *m_pExportPngAction;
     QAction *m_pExportBmpTrueColorAction;
     QAction *m_pExportBmp256Action;

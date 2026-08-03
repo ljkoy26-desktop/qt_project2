@@ -4,6 +4,7 @@
 #include "bmpwriter.h"
 
 #include <QAction>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -16,6 +17,8 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPainter>
+#include <QPushButton>
+#include <QSize>
 #include <QStatusBar>
 #include <QToolBar>
 #include <QUrl>
@@ -27,6 +30,7 @@ MainWindow::MainWindow(QWidget *pParent)
     , m_pExportBmpMenu(nullptr)
     , m_pExportTilesMenu(nullptr)
     , m_pOpenAction(nullptr)
+    , m_pMergeFolderAction(nullptr)
     , m_pExportPngAction(nullptr)
     , m_pExportBmpTrueColorAction(nullptr)
     , m_pExportBmp256Action(nullptr)
@@ -66,6 +70,8 @@ void MainWindow::InitMenuBar()
     m_pOpenAction = m_pFileMenu->addAction(QStringLiteral("이미지 열기..."), this, &MainWindow::OnOpenImage);
     m_pOpenAction->setShortcut(QKeySequence::Open);
 
+    m_pMergeFolderAction = m_pFileMenu->addAction(QStringLiteral("폴더에서 타일 합치기..."), this, &MainWindow::OnMergeFromFolder);
+
     m_pFileMenu->addSeparator();
 
     m_pExportPngAction = m_pFileMenu->addAction(QStringLiteral("PNG로 내보내기..."), this, &MainWindow::OnExportPng);
@@ -93,6 +99,7 @@ void MainWindow::InitToolBar()
     pToolBar->setMovable(false);
 
     pToolBar->addAction(m_pOpenAction);
+    pToolBar->addAction(m_pMergeFolderAction);
     pToolBar->addSeparator();
     pToolBar->addAction(m_pExportPngAction);
     pToolBar->addAction(m_pExportBmpTrueColorAction);
@@ -132,6 +139,28 @@ bool MainWindow::EnsureNotEmpty()
     }
 
     return true;
+}
+
+void MainWindow::ShowCompletionDialog(const QString &strFolderPath, int nImageCount, const QSize &oFinalSize)
+{
+    QMessageBox oMsgBox(this);
+    oMsgBox.setWindowTitle(QStringLiteral("작업 완료"));
+    oMsgBox.setIcon(QMessageBox::Information);
+    oMsgBox.setText(QString(QStringLiteral("작업이 완료되었습니다.\n\n이미지 개수: %1개\n최종 크기: %2x%3"))
+        .arg(nImageCount)
+        .arg(oFinalSize.width())
+        .arg(oFinalSize.height()));
+
+    QPushButton *pOpenFolderButton = oMsgBox.addButton(QStringLiteral("해당 폴더 열기"), QMessageBox::ActionRole);
+    QPushButton *pOkButton = oMsgBox.addButton(QStringLiteral("확인"), QMessageBox::AcceptRole);
+    oMsgBox.setDefaultButton(pOkButton);
+
+    oMsgBox.exec();
+
+    if (oMsgBox.clickedButton() == pOpenFolderButton)
+    {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(strFolderPath));
+    }
 }
 
 QImage MainWindow::FlattenToWhite(const QImage &imageSource) const
@@ -196,6 +225,28 @@ void MainWindow::LoadImageFile(const QString &strPath)
     UpdateStatusLabel();
 }
 
+void MainWindow::OnMergeFromFolder()
+{
+    QString strFolderPath = QFileDialog::getExistingDirectory(this, QStringLiteral("타일 이미지 폴더 선택"));
+    if (strFolderPath.isEmpty())
+    {
+        return;
+    }
+
+    QString strError;
+    if (!m_oModel.LoadFromFolder(strFolderPath, &strError))
+    {
+        QMessageBox::warning(this, QStringLiteral("합치기 실패"), strError);
+        return;
+    }
+
+    m_pSpriteView->Populate(m_oModel.Tiles(), m_oModel.TileSize());
+    UpdateStatusLabel();
+
+    QSize oFinalSize(m_oModel.TileSize() * m_oModel.TileCount(), m_oModel.TileSize());
+    ShowCompletionDialog(strFolderPath, m_oModel.TileCount(), oFinalSize);
+}
+
 namespace
 {
     // 드롭된 URL 목록 중 확장자가 png/bmp인 첫 로컬 파일 경로를 찾는다. 없으면 빈 문자열.
@@ -241,6 +292,36 @@ void MainWindow::dropEvent(QDropEvent *pEvent)
     }
 
     pEvent->acceptProposedAction();
+
+    if (!m_oModel.IsEmpty())
+    {
+        QImage imageProbe;
+        if (imageProbe.load(strPath) && imageProbe.height() == m_oModel.TileSize())
+        {
+            QMessageBox::StandardButton eAnswer = QMessageBox::question(this, QStringLiteral("이미지 이어붙이기"),
+                QString(QStringLiteral("이미 열려 있는 이미지와 타일 크기(%1x%1)가 같습니다.\n뒤에 이어붙일까요?"))
+                    .arg(m_oModel.TileSize()),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+            if (eAnswer == QMessageBox::Yes)
+            {
+                int nOldCount = m_oModel.TileCount();
+
+                QString strError;
+                if (!m_oModel.AppendFromFile(strPath, &strError))
+                {
+                    QMessageBox::warning(this, QStringLiteral("이어붙이기 실패"), strError);
+                    return;
+                }
+
+                // 화면에 표시된 목록(제외 상태 포함)은 그대로 두고, 새로 추가된 타일만 뒤에 붙인다.
+                m_pSpriteView->AppendTiles(m_oModel.Tiles().mid(nOldCount));
+                UpdateStatusLabel();
+                return;
+            }
+        }
+    }
+
     LoadImageFile(strPath);
 }
 
@@ -264,7 +345,7 @@ void MainWindow::OnExportPng()
         return;
     }
 
-    statusBar()->showMessage(QStringLiteral("PNG로 저장했습니다: ") + strPath, 5000);
+    ShowCompletionDialog(QFileInfo(strPath).absolutePath(), m_oModel.TileCount(), imageStrip.size());
 }
 
 void MainWindow::OnExportBmpTrueColor()
@@ -287,7 +368,7 @@ void MainWindow::OnExportBmpTrueColor()
         return;
     }
 
-    statusBar()->showMessage(QStringLiteral("BMP(트루컬러)로 저장했습니다: ") + strPath, 5000);
+    ShowCompletionDialog(QFileInfo(strPath).absolutePath(), m_oModel.TileCount(), imageFlat.size());
 }
 
 void MainWindow::OnExportBmp256()
@@ -313,7 +394,7 @@ void MainWindow::OnExportBmp256()
         return;
     }
 
-    statusBar()->showMessage(QStringLiteral("BMP(256색)로 저장했습니다: ") + strPath, 5000);
+    ShowCompletionDialog(QFileInfo(strPath).absolutePath(), m_oModel.TileCount(), imageIndexed.size());
 }
 
 void MainWindow::OnExportBmp16()
@@ -339,7 +420,7 @@ void MainWindow::OnExportBmp16()
         return;
     }
 
-    statusBar()->showMessage(QStringLiteral("BMP(16색)로 저장했습니다: ") + strPath, 5000);
+    ShowCompletionDialog(QFileInfo(strPath).absolutePath(), m_oModel.TileCount(), imageFlat.size());
 }
 
 void MainWindow::OnSpriteOrderChanged()
@@ -424,7 +505,7 @@ void MainWindow::ExportTilesToFolder(TileSaveFn pSaveFn, const QString &strExten
 
     if (nSuccessCount == vecTiles.size())
     {
-        statusBar()->showMessage(QString(QStringLiteral("타일 %1개를 폴더에 저장했습니다: %2")).arg(nSuccessCount).arg(strFolderPath), 5000);
+        ShowCompletionDialog(strFolderPath, nSuccessCount, QSize(m_oModel.TileSize(), m_oModel.TileSize()));
     }
     else
     {

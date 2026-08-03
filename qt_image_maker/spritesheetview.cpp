@@ -11,6 +11,12 @@
 #include <QVariant>
 #include <QPushButton>
 
+namespace
+{
+    // 타일 이미지(Qt::UserRole)와 별개로, "내보내기 대상에서 제외" 여부를 저장하는 데이터 롤.
+    const int kExcludedRole = Qt::UserRole + 1;
+}
+
 SpriteSheetView::SpriteSheetView(QWidget *pParent)
     : QWidget(pParent)
     , m_pListWidget(nullptr)
@@ -19,6 +25,7 @@ SpriteSheetView::SpriteSheetView(QWidget *pParent)
     , m_pZoomLabel(nullptr)
     , m_pMoveUpButton(nullptr)
     , m_pMoveDownButton(nullptr)
+    , m_pToggleExcludeButton(nullptr)
     , m_nTileSize(0)
 {
     InitUi();
@@ -84,9 +91,17 @@ void SpriteSheetView::InitUi()
     pMoveButtonsLayout->addWidget(m_pMoveUpButton);
     pMoveButtonsLayout->addWidget(m_pMoveDownButton);
 
+    m_pToggleExcludeButton = new QPushButton(QStringLiteral("제외"), this);
+    m_pToggleExcludeButton->setToolTip(QStringLiteral("선택한 타일을 내보내기 대상에서 제외/복귀"));
+    m_pToggleExcludeButton->setFixedHeight(24);
+    m_pToggleExcludeButton->setEnabled(false);
+
+    connect(m_pToggleExcludeButton, &QPushButton::clicked, this, &SpriteSheetView::OnToggleExcludeClicked);
+
     QVBoxLayout *pRightLayout = new QVBoxLayout();
     pRightLayout->addWidget(pListTitle);
     pRightLayout->addLayout(pMoveButtonsLayout);
+    pRightLayout->addWidget(m_pToggleExcludeButton);
     pRightLayout->addWidget(m_pListWidget, 1);
 
     QWidget *pRightPanel = new QWidget(this);
@@ -117,11 +132,7 @@ void SpriteSheetView::Populate(const QVector<QImage> &vecTiles, int nTileSize)
 
     for (int i = 0; i < vecTiles.size(); ++i)
     {
-        QImage imageScaled = vecTiles.at(i).scaled(nIconEdge, nIconEdge, Qt::KeepAspectRatio, Qt::FastTransformation);
-        QListWidgetItem *pItem = new QListWidgetItem(QIcon(QPixmap::fromImage(imageScaled)), QString::number(i));
-        pItem->setData(Qt::UserRole, QVariant::fromValue(vecTiles.at(i)));
-        pItem->setTextAlignment(Qt::AlignHCenter);
-        m_pListWidget->addItem(pItem);
+        m_pListWidget->addItem(CreateTileItem(vecTiles.at(i), i));
     }
 
     if (m_pListWidget->count() > 0)
@@ -132,6 +143,65 @@ void SpriteSheetView::Populate(const QVector<QImage> &vecTiles, int nTileSize)
     UpdateStripPreview();
 }
 
+void SpriteSheetView::AppendTiles(const QVector<QImage> &vecNewTiles)
+{
+    int nStartRow = m_pListWidget->count();
+
+    for (int i = 0; i < vecNewTiles.size(); ++i)
+    {
+        m_pListWidget->addItem(CreateTileItem(vecNewTiles.at(i), nStartRow + i));
+    }
+
+    UpdateStripPreview();
+}
+
+QListWidgetItem* SpriteSheetView::CreateTileItem(const QImage &imageTile, int nRow)
+{
+    QListWidgetItem *pItem = new QListWidgetItem(BuildTileIcon(imageTile), QString::number(nRow));
+    pItem->setData(Qt::UserRole, QVariant::fromValue(imageTile));
+    pItem->setData(kExcludedRole, false);
+    pItem->setTextAlignment(Qt::AlignHCenter);
+    return pItem;
+}
+
+QIcon SpriteSheetView::BuildTileIcon(const QImage &imageTile) const
+{
+    int nIconEdge = m_pListWidget->iconSize().width();
+    QImage imageScaled = imageTile.scaled(nIconEdge, nIconEdge, Qt::KeepAspectRatio, Qt::FastTransformation);
+    return QIcon(QPixmap::fromImage(imageScaled));
+}
+
+bool SpriteSheetView::IsItemExcluded(QListWidgetItem *pItem) const
+{
+    return pItem->data(kExcludedRole).toBool();
+}
+
+void SpriteSheetView::SetItemExcluded(QListWidgetItem *pItem, bool bExcluded)
+{
+    pItem->setData(kExcludedRole, bExcluded);
+
+    if (bExcluded)
+    {
+        QPixmap oPixmap = pItem->icon().pixmap(m_pListWidget->iconSize());
+        QPixmap oDimmed(oPixmap.size());
+        oDimmed.fill(Qt::transparent);
+
+        QPainter painter(&oDimmed);
+        painter.setOpacity(0.3);
+        painter.drawPixmap(0, 0, oPixmap);
+        painter.end();
+
+        pItem->setIcon(QIcon(oDimmed));
+        pItem->setBackground(QColor(90, 40, 40));
+    }
+    else
+    {
+        QImage imageTile = pItem->data(Qt::UserRole).value<QImage>();
+        pItem->setIcon(BuildTileIcon(imageTile));
+        pItem->setBackground(QBrush());
+    }
+}
+
 QVector<QImage> SpriteSheetView::CurrentOrder() const
 {
     QVector<QImage> vecResult;
@@ -140,6 +210,11 @@ QVector<QImage> SpriteSheetView::CurrentOrder() const
     for (int i = 0; i < m_pListWidget->count(); ++i)
     {
         QListWidgetItem *pItem = m_pListWidget->item(i);
+        if (IsItemExcluded(pItem))
+        {
+            continue;
+        }
+
         vecResult.append(pItem->data(Qt::UserRole).value<QImage>());
     }
 
@@ -153,6 +228,8 @@ void SpriteSheetView::Clear()
     m_pStripPreviewLabel->setFixedSize(1, 1);
     m_pZoomLabel->clear();
     m_pZoomLabel->setFixedSize(1, 1);
+    m_pToggleExcludeButton->setEnabled(false);
+    m_pToggleExcludeButton->setText(QStringLiteral("제외"));
     m_nTileSize = 0;
 }
 
@@ -169,6 +246,21 @@ void SpriteSheetView::OnMoveUpClicked()
 void SpriteSheetView::OnMoveDownClicked()
 {
     MoveCurrentRow(1);
+}
+
+void SpriteSheetView::OnToggleExcludeClicked()
+{
+    QListWidgetItem *pCurrent = m_pListWidget->currentItem();
+    if (pCurrent == nullptr)
+    {
+        return;
+    }
+
+    bool bNowExcluded = !IsItemExcluded(pCurrent);
+    SetItemExcluded(pCurrent, bNowExcluded);
+    m_pToggleExcludeButton->setText(bNowExcluded ? QStringLiteral("복귀") : QStringLiteral("제외"));
+
+    HandleReorderChanged();
 }
 
 void SpriteSheetView::MoveCurrentRow(int nOffset)
@@ -206,8 +298,13 @@ void SpriteSheetView::OnCurrentItemChanged(QListWidgetItem *pCurrent, QListWidge
     if (pCurrent == nullptr)
     {
         m_pZoomLabel->clear();
+        m_pToggleExcludeButton->setEnabled(false);
+        m_pToggleExcludeButton->setText(QStringLiteral("제외"));
         return;
     }
+
+    m_pToggleExcludeButton->setEnabled(true);
+    m_pToggleExcludeButton->setText(IsItemExcluded(pCurrent) ? QStringLiteral("복귀") : QStringLiteral("제외"));
 
     QImage imageTile = pCurrent->data(Qt::UserRole).value<QImage>();
     if (imageTile.isNull())
