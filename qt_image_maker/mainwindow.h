@@ -4,6 +4,7 @@
 #include <QMainWindow>
 
 #include "spritesheetmodel.h"
+#include "colorquantizer.h"
 
 QT_BEGIN_NAMESPACE
 class QAction;
@@ -29,6 +30,10 @@ private slots:
     void OnExportBmpTrueColor();
     void OnExportBmp256();
     void OnExportBmp16();
+    void OnExportTilesPng();
+    void OnExportTilesBmpTrueColor();
+    void OnExportTilesBmp256();
+    void OnExportTilesBmp16();
     void OnSpriteOrderChanged();
 
 protected:
@@ -42,9 +47,19 @@ private:
     void InitStatusBar();
 
     bool EnsureNotEmpty();
+    QImage FlattenToWhite(const QImage &imageSource) const;
+    QImage BuildIndexedImage(const QImage &imageFlat, const QuantizeResult &oQuantized) const;
     QImage BuildFlattenedStripImage() const;
     void UpdateStatusLabel();
     void LoadImageFile(const QString &strPath);
+
+    bool SaveTileAsPng(const QImage &imageTile, const QString &strFilePath, QString *pStrError);
+    bool SaveTileAsBmpTrueColor(const QImage &imageTile, const QString &strFilePath, QString *pStrError);
+    bool SaveTileAsBmp256(const QImage &imageTile, const QString &strFilePath, QString *pStrError);
+    bool SaveTileAsBmp16(const QImage &imageTile, const QString &strFilePath, QString *pStrError);
+
+    using TileSaveFn = bool (MainWindow::*)(const QImage &, const QString &, QString *);
+    void ExportTilesToFolder(TileSaveFn pSaveFn, const QString &strExtension);
 
 private:
     SpriteSheetModel m_oModel;
@@ -52,12 +67,17 @@ private:
 
     QMenu   *m_pFileMenu;
     QMenu   *m_pExportBmpMenu;
+    QMenu   *m_pExportTilesMenu;
 
     QAction *m_pOpenAction;
     QAction *m_pExportPngAction;
     QAction *m_pExportBmpTrueColorAction;
     QAction *m_pExportBmp256Action;
     QAction *m_pExportBmp16Action;
+    QAction *m_pExportTilesPngAction;
+    QAction *m_pExportTilesBmpTrueColorAction;
+    QAction *m_pExportTilesBmp256Action;
+    QAction *m_pExportTilesBmp16Action;
 
     QLabel  *m_pTileInfoLabel;
 };

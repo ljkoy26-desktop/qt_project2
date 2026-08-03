@@ -4,6 +4,7 @@
 #include "bmpwriter.h"
 
 #include <QAction>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
@@ -24,11 +25,16 @@ MainWindow::MainWindow(QWidget *pParent)
     , m_pSpriteView(nullptr)
     , m_pFileMenu(nullptr)
     , m_pExportBmpMenu(nullptr)
+    , m_pExportTilesMenu(nullptr)
     , m_pOpenAction(nullptr)
     , m_pExportPngAction(nullptr)
     , m_pExportBmpTrueColorAction(nullptr)
     , m_pExportBmp256Action(nullptr)
     , m_pExportBmp16Action(nullptr)
+    , m_pExportTilesPngAction(nullptr)
+    , m_pExportTilesBmpTrueColorAction(nullptr)
+    , m_pExportTilesBmp256Action(nullptr)
+    , m_pExportTilesBmp16Action(nullptr)
     , m_pTileInfoLabel(nullptr)
 {
     resize(1300, 850);
@@ -68,6 +74,14 @@ void MainWindow::InitMenuBar()
     m_pExportBmpTrueColorAction = m_pExportBmpMenu->addAction(QStringLiteral("트루컬러(24비트)..."), this, &MainWindow::OnExportBmpTrueColor);
     m_pExportBmp256Action = m_pExportBmpMenu->addAction(QStringLiteral("256색..."), this, &MainWindow::OnExportBmp256);
     m_pExportBmp16Action = m_pExportBmpMenu->addAction(QStringLiteral("16색..."), this, &MainWindow::OnExportBmp16);
+
+    m_pFileMenu->addSeparator();
+
+    m_pExportTilesMenu = m_pFileMenu->addMenu(QStringLiteral("타일 개별 이미지로 내보내기"));
+    m_pExportTilesPngAction = m_pExportTilesMenu->addAction(QStringLiteral("PNG..."), this, &MainWindow::OnExportTilesPng);
+    m_pExportTilesBmpTrueColorAction = m_pExportTilesMenu->addAction(QStringLiteral("BMP 트루컬러(24비트)..."), this, &MainWindow::OnExportTilesBmpTrueColor);
+    m_pExportTilesBmp256Action = m_pExportTilesMenu->addAction(QStringLiteral("BMP 256색..."), this, &MainWindow::OnExportTilesBmp256);
+    m_pExportTilesBmp16Action = m_pExportTilesMenu->addAction(QStringLiteral("BMP 16색..."), this, &MainWindow::OnExportTilesBmp16);
 
     m_pFileMenu->addSeparator();
     m_pFileMenu->addAction(QStringLiteral("종료"), this, &QWidget::close);
@@ -120,18 +134,42 @@ bool MainWindow::EnsureNotEmpty()
     return true;
 }
 
-QImage MainWindow::BuildFlattenedStripImage() const
+QImage MainWindow::FlattenToWhite(const QImage &imageSource) const
 {
-    QImage imageStrip = m_oModel.BuildStripImage();
-
-    QImage imageFlat(imageStrip.size(), QImage::Format_RGB32);
+    QImage imageFlat(imageSource.size(), QImage::Format_RGB32);
     imageFlat.fill(Qt::white);
 
     QPainter painter(&imageFlat);
-    painter.drawImage(0, 0, imageStrip);
+    painter.drawImage(0, 0, imageSource);
     painter.end();
 
     return imageFlat;
+}
+
+QImage MainWindow::BuildFlattenedStripImage() const
+{
+    return FlattenToWhite(m_oModel.BuildStripImage());
+}
+
+QImage MainWindow::BuildIndexedImage(const QImage &imageFlat, const QuantizeResult &oQuantized) const
+{
+    QImage imageIndexed(imageFlat.width(), imageFlat.height(), QImage::Format_Indexed8);
+    imageIndexed.setColorCount(oQuantized.vecPalette.size());
+    for (int i = 0; i < oQuantized.vecPalette.size(); ++i)
+    {
+        imageIndexed.setColor(i, oQuantized.vecPalette.at(i));
+    }
+
+    for (int y = 0; y < imageFlat.height(); ++y)
+    {
+        uchar *pLine = imageIndexed.scanLine(y);
+        for (int x = 0; x < imageFlat.width(); ++x)
+        {
+            pLine[x] = (uchar)oQuantized.vecPixelIndices.at(y * imageFlat.width() + x);
+        }
+    }
+
+    return imageIndexed;
 }
 
 void MainWindow::OnOpenImage()
@@ -267,22 +305,7 @@ void MainWindow::OnExportBmp256()
 
     QImage imageFlat = BuildFlattenedStripImage();
     QuantizeResult oQuantized = ColorQuantizer::Quantize(imageFlat, 256);
-
-    QImage imageIndexed(imageFlat.width(), imageFlat.height(), QImage::Format_Indexed8);
-    imageIndexed.setColorCount(oQuantized.vecPalette.size());
-    for (int i = 0; i < oQuantized.vecPalette.size(); ++i)
-    {
-        imageIndexed.setColor(i, oQuantized.vecPalette.at(i));
-    }
-
-    for (int y = 0; y < imageFlat.height(); ++y)
-    {
-        uchar *pLine = imageIndexed.scanLine(y);
-        for (int x = 0; x < imageFlat.width(); ++x)
-        {
-            pLine[x] = (uchar)oQuantized.vecPixelIndices.at(y * imageFlat.width() + x);
-        }
-    }
+    QImage imageIndexed = BuildIndexedImage(imageFlat, oQuantized);
 
     if (!imageIndexed.save(strPath, "BMP"))
     {
@@ -322,4 +345,110 @@ void MainWindow::OnExportBmp16()
 void MainWindow::OnSpriteOrderChanged()
 {
     m_oModel.SetTiles(m_pSpriteView->CurrentOrder());
+}
+
+bool MainWindow::SaveTileAsPng(const QImage &imageTile, const QString &strFilePath, QString *pStrError)
+{
+    if (!imageTile.save(strFilePath, "PNG"))
+    {
+        *pStrError = QStringLiteral("PNG 저장 실패: %1").arg(strFilePath);
+        return false;
+    }
+
+    return true;
+}
+
+bool MainWindow::SaveTileAsBmpTrueColor(const QImage &imageTile, const QString &strFilePath, QString *pStrError)
+{
+    QImage imageRgb888 = FlattenToWhite(imageTile).convertToFormat(QImage::Format_RGB888);
+    if (!imageRgb888.save(strFilePath, "BMP"))
+    {
+        *pStrError = QStringLiteral("BMP 저장 실패: %1").arg(strFilePath);
+        return false;
+    }
+
+    return true;
+}
+
+bool MainWindow::SaveTileAsBmp256(const QImage &imageTile, const QString &strFilePath, QString *pStrError)
+{
+    QImage imageFlat = FlattenToWhite(imageTile);
+    QuantizeResult oQuantized = ColorQuantizer::Quantize(imageFlat, 256);
+    QImage imageIndexed = BuildIndexedImage(imageFlat, oQuantized);
+
+    if (!imageIndexed.save(strFilePath, "BMP"))
+    {
+        *pStrError = QStringLiteral("BMP 저장 실패: %1").arg(strFilePath);
+        return false;
+    }
+
+    return true;
+}
+
+bool MainWindow::SaveTileAsBmp16(const QImage &imageTile, const QString &strFilePath, QString *pStrError)
+{
+    QImage imageFlat = FlattenToWhite(imageTile);
+    QuantizeResult oQuantized = ColorQuantizer::Quantize(imageFlat, 16);
+
+    return BmpWriter::WriteIndexed4Bpp(strFilePath, imageFlat.width(), imageFlat.height(), oQuantized.vecPixelIndices, oQuantized.vecPalette, pStrError);
+}
+
+void MainWindow::ExportTilesToFolder(TileSaveFn pSaveFn, const QString &strExtension)
+{
+    if (!EnsureNotEmpty())
+    {
+        return;
+    }
+
+    QString strFolderPath = QFileDialog::getExistingDirectory(this, QStringLiteral("타일을 저장할 폴더 선택"));
+    if (strFolderPath.isEmpty())
+    {
+        return;
+    }
+
+    const QVector<QImage> &vecTiles = m_oModel.Tiles();
+    QDir oDir(strFolderPath);
+
+    int nSuccessCount = 0;
+    QString strError;
+
+    for (int i = 0; i < vecTiles.size(); ++i)
+    {
+        QString strFilePath = oDir.filePath(QString(QStringLiteral("%1.%2")).arg(i + 1).arg(strExtension));
+
+        if ((this->*pSaveFn)(vecTiles.at(i), strFilePath, &strError))
+        {
+            ++nSuccessCount;
+        }
+    }
+
+    if (nSuccessCount == vecTiles.size())
+    {
+        statusBar()->showMessage(QString(QStringLiteral("타일 %1개를 폴더에 저장했습니다: %2")).arg(nSuccessCount).arg(strFolderPath), 5000);
+    }
+    else
+    {
+        QMessageBox::warning(this, QStringLiteral("일부 저장 실패"),
+            QString(QStringLiteral("%1 / %2개 타일만 저장되었습니다.\n마지막 오류: %3")).arg(nSuccessCount).arg(vecTiles.size()).arg(strError));
+    }
+}
+
+void MainWindow::OnExportTilesPng()
+{
+    ExportTilesToFolder(&MainWindow::SaveTileAsPng, QStringLiteral("png"));
+}
+
+void MainWindow::OnExportTilesBmpTrueColor()
+{
+    ExportTilesToFolder(&MainWindow::SaveTileAsBmpTrueColor, QStringLiteral("bmp"));
+}
+
+void MainWindow::OnExportTilesBmp256()
+{
+    ExportTilesToFolder(&MainWindow::SaveTileAsBmp256, QStringLiteral("bmp"));
+}
+
+void MainWindow::OnExportTilesBmp16()
+{
+    ExportTilesToFolder(&MainWindow::SaveTileAsBmp16, QStringLiteral("bmp"));
 }
