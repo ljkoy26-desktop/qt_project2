@@ -10,6 +10,11 @@
 #include <QIcon>
 #include <QVariant>
 #include <QPushButton>
+#include <QMenu>
+#include <QAction>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QPoint>
 
 namespace
 {
@@ -46,9 +51,11 @@ void SpriteSheetView::InitUi()
     m_pListWidget->setSpacing(2);
     m_pListWidget->setMinimumWidth(70);
     m_pListWidget->setMaximumWidth(90);
+    m_pListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
 
     connect(m_pListWidget->model(), &QAbstractItemModel::rowsMoved, this, &SpriteSheetView::OnRowsMoved);
     connect(m_pListWidget, &QListWidget::currentItemChanged, this, &SpriteSheetView::OnCurrentItemChanged);
+    connect(m_pListWidget, &QListWidget::customContextMenuRequested, this, &SpriteSheetView::OnListContextMenuRequested);
 
     m_pStripPreviewLabel = new QLabel(this);
     m_pStripPreviewLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
@@ -68,6 +75,8 @@ void SpriteSheetView::InitUi()
     QLabel *pStripTitle = new QLabel(QStringLiteral("스트립 미리보기 (현재 순서)"), this);
     QLabel *pZoomTitle = new QLabel(QStringLiteral("선택 타일 확대"), this);
     QLabel *pListTitle = new QLabel(QStringLiteral("타일 순서 (드래그로 변경)"), this);
+    pListTitle->setWordWrap(true);
+    pListTitle->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
 
     QVBoxLayout *pLeftLayout = new QVBoxLayout();
     pLeftLayout->addWidget(pZoomTitle);
@@ -280,6 +289,121 @@ void SpriteSheetView::MoveCurrentRow(int nOffset)
     QListWidgetItem *pItem = m_pListWidget->takeItem(nCurrentRow);
     m_pListWidget->insertItem(nNewRow, pItem);
     m_pListWidget->setCurrentItem(pItem);
+
+    HandleReorderChanged();
+}
+
+void SpriteSheetView::MoveCurrentRowTo(int nTargetRow)
+{
+    int nCurrentRow = m_pListWidget->currentRow();
+    if (nCurrentRow < 0)
+    {
+        return;
+    }
+
+    nTargetRow = qBound(0, nTargetRow, m_pListWidget->count() - 1);
+    if (nTargetRow == nCurrentRow)
+    {
+        return;
+    }
+
+    QListWidgetItem *pItem = m_pListWidget->takeItem(nCurrentRow);
+    m_pListWidget->insertItem(nTargetRow, pItem);
+    m_pListWidget->setCurrentItem(pItem);
+
+    HandleReorderChanged();
+}
+
+void SpriteSheetView::OnListContextMenuRequested(const QPoint &oPos)
+{
+    QListWidgetItem *pItem = m_pListWidget->itemAt(oPos);
+    if (pItem == nullptr)
+    {
+        return;
+    }
+
+    m_pListWidget->setCurrentItem(pItem);
+
+    QMenu oMenu(this);
+    QAction *pActionToFront = oMenu.addAction(QStringLiteral("맨앞으로"));
+    QAction *pActionToBack = oMenu.addAction(QStringLiteral("맨뒤로"));
+    QAction *pActionToggleExclude = oMenu.addAction(IsItemExcluded(pItem) ? QStringLiteral("이미지 복귀") : QStringLiteral("이미지 제외"));
+    QAction *pActionRemove = oMenu.addAction(QStringLiteral("해당 이미지 제거"));
+    QAction *pActionMoveToPosition = oMenu.addAction(QStringLiteral("숫자를 입력하여 이동"));
+
+    QAction *pSelectedAction = oMenu.exec(m_pListWidget->mapToGlobal(oPos));
+    if (pSelectedAction == nullptr)
+    {
+        return;
+    }
+
+    if (pSelectedAction == pActionToFront)
+    {
+        OnMoveToFrontClicked();
+    }
+    else if (pSelectedAction == pActionToBack)
+    {
+        OnMoveToBackClicked();
+    }
+    else if (pSelectedAction == pActionToggleExclude)
+    {
+        OnToggleExcludeClicked();
+    }
+    else if (pSelectedAction == pActionRemove)
+    {
+        OnRemoveItemClicked();
+    }
+    else if (pSelectedAction == pActionMoveToPosition)
+    {
+        OnMoveToPositionClicked();
+    }
+}
+
+void SpriteSheetView::OnMoveToFrontClicked()
+{
+    MoveCurrentRowTo(0);
+}
+
+void SpriteSheetView::OnMoveToBackClicked()
+{
+    MoveCurrentRowTo(m_pListWidget->count() - 1);
+}
+
+void SpriteSheetView::OnMoveToPositionClicked()
+{
+    int nCurrentRow = m_pListWidget->currentRow();
+    if (nCurrentRow < 0)
+    {
+        return;
+    }
+
+    int nMaxIndex = m_pListWidget->count() - 1;
+
+    bool bOk = false;
+    int nTargetPosition = QInputDialog::getInt(this, QStringLiteral("순서 이동"), QStringLiteral("이동할 순번을 입력하세요 (0 ~ %1):").arg(nMaxIndex), nCurrentRow, 0, nMaxIndex, 1, &bOk);
+    if (!bOk)
+    {
+        return;
+    }
+
+    MoveCurrentRowTo(nTargetPosition);
+}
+
+void SpriteSheetView::OnRemoveItemClicked()
+{
+    QListWidgetItem *pCurrent = m_pListWidget->currentItem();
+    if (pCurrent == nullptr)
+    {
+        return;
+    }
+
+    QMessageBox::StandardButton eButton = QMessageBox::question(this, QStringLiteral("이미지 제거"), QStringLiteral("정말로 지우겠습니까?"), QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (eButton != QMessageBox::Yes)
+    {
+        return;
+    }
+
+    delete m_pListWidget->takeItem(m_pListWidget->row(pCurrent));
 
     HandleReorderChanged();
 }

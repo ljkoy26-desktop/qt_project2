@@ -12,6 +12,7 @@ class QLabel;
 class QScrollArea;
 class QPushButton;
 class QIcon;
+class QPoint;
 QT_END_NAMESPACE
 
 // 타일 리스트 미리보기(드래그 앤 드랍 재정렬) + 전체 스트립 미리보기 + 선택 타일 확대 미리보기를
@@ -47,12 +48,18 @@ private slots:
     void OnMoveUpClicked();
     void OnMoveDownClicked();
     void OnToggleExcludeClicked();
+    void OnListContextMenuRequested(const QPoint &oPos);
+    void OnMoveToFrontClicked();
+    void OnMoveToBackClicked();
+    void OnMoveToPositionClicked();
+    void OnRemoveItemClicked();
 
 private:
     void InitUi();
     void UpdateStripPreview();
     void RenumberItems();
     void MoveCurrentRow(int nOffset);
+    void MoveCurrentRowTo(int nTargetRow);
     void HandleReorderChanged();
     QIcon BuildTileIcon(const QImage &imageTile) const;
     QListWidgetItem* CreateTileItem(const QImage &imageTile, int nRow);

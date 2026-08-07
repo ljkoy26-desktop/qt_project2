@@ -1349,4 +1349,119 @@ import lib 항목과 매칭됨.
   1회 수행 필요(캐시가 폴더 이동 이전 기준으로 저장되어 있어 IDE 쪽도 동일하게 재구성 필요).
 - Visual Studio 디버거의 "first chance C++ exception" 경고는 캐시 불일치로 인해 손상된 빌드를
   디버깅하면서 나온 것으로 보이며, 재구성된 빌드에서는 재현되지 않음(정상 실행 확인).
+
+---
+
+## [feat] qt_image_maker — 타일 순서 리스트 우클릭 컨텍스트 메뉴(맨앞/맨뒤/제외/제거/숫자이동) 추가
+
+### 수정 파일
+- `qt_image_maker/spritesheetview.h`
+- `qt_image_maker/spritesheetview.cpp`
+
+### 변경 배경
+`참고자료/작업지시/이미지 이동개선.md`, `이미지 이동 개선.png` 요청 반영.
+타일이 많을 때 ▲/▼ 버튼으로 한 칸씩 옮기는 방식이 불편하다는 피드백에 따라,
+우측 "타일 순서" 리스트의 항목을 우클릭하면 팝업 메뉴로 아래 5개 동작을 바로 수행할 수 있도록 개선.
+기존 드래그 앤 드랍/▲▼/제외 버튼 로직과 `MainWindow` 쪽 연동(`OrderChanged` → `CurrentOrder()`)은 그대로 유지.
+
+### 추가된 컨텍스트 메뉴 항목 (리스트 항목 우클릭)
+| 메뉴 | 동작 |
+|---|---|
+| 맨앞으로 | 선택 타일을 0번째로 이동 |
+| 맨뒤로 | 선택 타일을 마지막 순번으로 이동 |
+| 이미지 제외 / 이미지 복귀 | 기존 `제외` 버튼과 동일한 토글 로직 재사용(내보내기 대상에서만 제외, 목록에는 남음) |
+| 해당 이미지 제거 | `QMessageBox::question`으로 "정말로 지우겠습니까?" 확인 후 목록에서 완전히 삭제 |
+| 숫자를 입력하여 이동 | `QInputDialog::getInt`로 1 ~ 전체 개수 범위 입력받아 해당 순번으로 이동, 나머지 항목은 자동으로 한 칸씩 밀림 |
+
+### 구현 내용
+
+#### spritesheetview.h
+- `QT_BEGIN_NAMESPACE` 블록에 `class QPoint;` 전방 선언 추가
+- `private slots`에 추가:
+  - `OnListContextMenuRequested(const QPoint &oPos)`
+  - `OnMoveToFrontClicked()`
+  - `OnMoveToBackClicked()`
+  - `OnMoveToPositionClicked()`
+  - `OnRemoveItemClicked()`
+- `private`에 헬퍼 `MoveCurrentRowTo(int nTargetRow)` 추가(기존 `MoveCurrentRow(int nOffset)`는 유지)
+
+#### spritesheetview.cpp
+- 추가 include: `QMenu`, `QAction`, `QInputDialog`, `QMessageBox`, `QPoint`
+- `InitUi()`: `m_pListWidget->setContextMenuPolicy(Qt::CustomContextMenu);` 설정 후
+  `customContextMenuRequested` 시그널을 `OnListContextMenuRequested`에 연결
+- `OnListContextMenuRequested()`: 클릭 위치의 `QListWidgetItem`을 `itemAt()`으로 찾아 `setCurrentItem()`으로 선택시킨 뒤,
+  `QMenu`에 5개 `QAction`을 추가하고 `exec()` 결과에 따라 각 슬롯 호출(항목이 없으면 아무 동작 없이 반환)
+- `OnMoveToFrontClicked()` / `OnMoveToBackClicked()`: `MoveCurrentRowTo(0)` / `MoveCurrentRowTo(count - 1)` 호출
+- `OnMoveToPositionClicked()`: `QInputDialog::getInt`로 목표 순번(1-base) 입력받아 `MoveCurrentRowTo(순번 - 1)` 호출(취소 시 아무 동작 없음)
+- `OnRemoveItemClicked()`: `QMessageBox::question`(기본값 `No`)으로 확인 후 `Yes`일 때만 `takeItem()` + `delete`로 완전 삭제
+- `MoveCurrentRowTo(int nTargetRow)`: 기존 `MoveCurrentRow(int nOffset)`와 동일한 `takeItem()`/`insertItem()` 패턴을 절대 순번 기준으로 수행하는 헬퍼.
+  `qBound()`로 범위를 보정하고, 이동 후 `HandleReorderChanged()`(재번호 매김 + 스트립 미리보기 갱신 + `OrderChanged` emit) 호출
+
+### 동작 불변 항목 확인
+- 기존 ▲/▼ 버튼, 드래그 앤 드랍 재정렬, `제외` 버튼 단독 클릭 동작은 변경 없음
+- `MainWindow`는 `SpriteSheetView::OrderChanged` 시그널만 구독하고 있어(`OnSpriteOrderChanged() { m_oModel.SetTiles(m_pSpriteView->CurrentOrder()); }`),
+  이번 변경으로 인해 `MainWindow` 쪽 코드는 전혀 수정하지 않음(요구사항 4번 "재탐색 금지" 준수)
+
+### 코드 스타일
+- Allman 스타일(중괄호 다음 줄), 헝가리언 표기법(`m_p`, `p`, `n`, `o`, `e`, `b` 접두) 유지
+- 단일 라인 제어문도 줄바꿈 + 중괄호 유지
+- 두 파일 모두 기존 UTF-8 with BOM 인코딩 그대로 유지(내용만 수정, 재저장 인코딩 변경 없음)
+
+### 빌드 확인
+- `H:\Source\GithubDesktop\qt_project2\qt_image_maker\build` (CMake + Ninja, MSVC 2019 툴셋, Qt 6.6.3 msvc2019_64)
+  `cmake --build . --target qt_image_maker` 실행 → `qt_image_maker.exe` 링크 성공(경고/오류 없음)
+- 실제 커밋은 수행하지 않음(요구사항 6번에 따라 본 로그로만 기록)
+
+---
+
+## [fix] qt_image_maker — "숫자를 입력하여 이동" 인덱스 기준을 1-base → 0-base(리스트 표시 라벨 기준)로 수정
+
+### 수정 파일
+- `qt_image_maker/spritesheetview.cpp`
+
+### 변경 배경
+`타일 순서` 리스트는 `RenumberItems()`에서 각 항목 라벨을 `0`부터 표시한다(0, 1, 2, ... 순).
+그런데 컨텍스트 메뉴의 "숫자를 입력하여 이동"은 입력값을 1-base 순번으로 해석해
+`target row = 입력값 - 1`로 이동시키고 있었음. 그 결과 `8`을 입력하면 화면에 `7`이라고
+표시되는 자리(0-based 인덱스 7)로 이동해, 화면 라벨과 입력값이 어긋난다는 피드백을 반영해
+입력값을 화면에 보이는 라벨(0-based 인덱스)과 그대로 일치시키도록 수정.
+
+### 변경 전 → 후 (`OnMoveToPositionClicked()`)
+- 입력 범위: `1 ~ count` → `0 ~ count - 1`
+- 스핀박스 기본값: `nCurrentRow + 1` → `nCurrentRow`
+- 최종 이동 위치: `MoveCurrentRowTo(nTargetPosition - 1)` → `MoveCurrentRowTo(nTargetPosition)`
+- 안내 문구: `"이동할 순번을 입력하세요 (1 ~ %1):"` → `"이동할 순번을 입력하세요 (0 ~ %1):"` (`%1`은 `count - 1`)
+
+### 결과
+`8`을 입력하면 리스트에 라벨 `8`이 표시되는 자리(0-based 인덱스 8)로 정확히 이동함.
+
+### 빌드 확인
+- 기존 실행 중이던 `qt_image_maker.exe`(테스트 실행 중이던 프로세스) 종료 후 재빌드 → 링크 성공
+- 실제 커밋은 수행하지 않음
+
+---
+
+## [fix] qt_image_maker — 우측 "타일 순서" 제목 라벨 텍스트 잘림 수정
+
+### 수정 파일
+- `qt_image_maker/spritesheetview.cpp`
+
+### 변경 배경
+우측 패널(`pRightPanel`)의 폭이 `70~90px`로 좁게 고정되어 있는데, 제목 라벨 텍스트
+`"타일 순서 (드래그로 변경)"`는 `QLabel` 기본 설정(줄바꿈 없음)이라 폭을 넘는 부분이
+잘려 보인다는 피드백을 반영.
+
+### 변경 내용 (`InitUi()`)
+```cpp
+QLabel *pListTitle = new QLabel(QStringLiteral("타일 순서 (드래그로 변경)"), this);
+pListTitle->setWordWrap(true);
+pListTitle->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+```
+- `setWordWrap(true)`로 좁은 패널 폭에 맞춰 텍스트가 여러 줄로 자동 줄바꿈되도록 하여 잘림 없이 전체 문구가 보이게 함
+- `setAlignment(Qt::AlignHCenter | Qt::AlignVCenter)`로 줄바꿈된 여러 줄이 가운데 정렬되도록 함
+- 패널의 `minimumWidth(70)` / `maximumWidth(90)` 등 기존 레이아웃 크기 값은 그대로 유지(다른 코드 변경 없음)
+
+### 빌드 확인
+- `cmake --build . --target qt_image_maker` 재실행 → 링크 성공
+- 실제 커밋은 수행하지 않음
 - 실제 `git commit`은 수행하지 않음(작업 지시 6번 항목).
