@@ -64,7 +64,7 @@ void SpriteSheetView::InitUi()
     m_pZoomLabel->setAlignment(Qt::AlignCenter);
     m_pZoomLabel->setStyleSheet(QStringLiteral("background-color: #303030;"));
 
-    QLabel *pStripTitle = new QLabel(QStringLiteral("스트립 미리보기 (현재 순서, 드래그로 순서 변경)"), this);
+    QLabel *pStripTitle = new QLabel(QStringLiteral("이미지 리스트"), this);
     QLabel *pZoomTitle = new QLabel(QStringLiteral("선택 타일 확대"), this);
 
     m_pMoveUpButton = new QPushButton(QStringLiteral("이전으로"), this);
