@@ -41,8 +41,9 @@ MainWindow::MainWindow(QWidget *pParent)
     , m_pExportTilesBmp16Action(nullptr)
     , m_pTileInfoLabel(nullptr)
 {
-    // 스트립 미리보기가 기본값인 20개씩 x 5줄 격자를 스크롤 없이 보여줄 수 있도록 초기 창 크기를 확보.
-    resize(1450, 1100);
+    // 모니터 해상도(1080)를 넘지 않도록 초기 창 높이를 축소. 타일 격자는 창 크기에 맞춰
+    // 자동으로 줄바꿈되므로 폭/높이가 줄어도 잘리지 않는다.
+    resize(1450, 925);
     setWindowTitle(QStringLiteral("스프라이트시트 뷰어/편집기"));
     setAcceptDrops(true);
 
