@@ -53,6 +53,7 @@ private slots:
     void OnMoveToBackClicked();
     void OnMoveToPositionClicked();
     void OnRemoveItemClicked();
+    void OnColumnsButtonClicked();
 
 private:
     void InitUi();
@@ -74,8 +75,12 @@ private:
     QPushButton *m_pMoveUpButton;
     QPushButton *m_pMoveDownButton;
     QPushButton *m_pToggleExcludeButton;
+    QPushButton *m_pColumns5Button;
+    QPushButton *m_pColumns10Button;
+    QPushButton *m_pColumns20Button;
 
     int          m_nTileSize;
+    int          m_nColumnsPerRow;
 };
 
 #endif // SPRITESHEETVIEW_H

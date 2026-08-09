@@ -10,16 +10,26 @@
 #include <QIcon>
 #include <QVariant>
 #include <QPushButton>
+#include <QButtonGroup>
 #include <QMenu>
 #include <QAction>
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QPoint>
+#include <QFont>
+#include <QRect>
 
 namespace
 {
     // 타일 이미지(Qt::UserRole)와 별개로, "내보내기 대상에서 제외" 여부를 저장하는 데이터 롤.
     const int kExcludedRole = Qt::UserRole + 1;
+
+    // 격자 미리보기에서 원본 타일 크기(16x16, 64x64 등)와 무관하게 셀에 표시할 고정 크기(px).
+    const int kGridCellSize = 64;
+    // 셀 하단에 순번 텍스트를 표시할 여백 높이(px).
+    const int kGridNumberAreaHeight = 16;
+    // 셀 사이/캔버스 가장자리 여백(px).
+    const int kGridCellSpacing = 4;
 }
 
 SpriteSheetView::SpriteSheetView(QWidget *pParent)
@@ -31,7 +41,11 @@ SpriteSheetView::SpriteSheetView(QWidget *pParent)
     , m_pMoveUpButton(nullptr)
     , m_pMoveDownButton(nullptr)
     , m_pToggleExcludeButton(nullptr)
+    , m_pColumns5Button(nullptr)
+    , m_pColumns10Button(nullptr)
+    , m_pColumns20Button(nullptr)
     , m_nTileSize(0)
+    , m_nColumnsPerRow(10)
 {
     InitUi();
 }
@@ -66,11 +80,33 @@ void SpriteSheetView::InitUi()
     m_pStripScrollArea->setWidgetResizable(false);
     m_pStripScrollArea->setFixedHeight(180);
     m_pStripScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_pStripScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_pStripScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
     m_pZoomLabel = new QLabel(this);
     m_pZoomLabel->setAlignment(Qt::AlignCenter);
     m_pZoomLabel->setStyleSheet(QStringLiteral("background-color: #303030;"));
+
+    // 한 줄에 몇 개씩 격자로 보여줄지 선택하는 버튼(라디오 형태, 하나만 선택 유지).
+    m_pColumns5Button = new QPushButton(QStringLiteral("5개씩"), this);
+    m_pColumns10Button = new QPushButton(QStringLiteral("10개씩"), this);
+    m_pColumns20Button = new QPushButton(QStringLiteral("20개씩"), this);
+    m_pColumns5Button->setCheckable(true);
+    m_pColumns10Button->setCheckable(true);
+    m_pColumns20Button->setCheckable(true);
+    m_pColumns5Button->setProperty("columnsPerRow", 5);
+    m_pColumns10Button->setProperty("columnsPerRow", 10);
+    m_pColumns20Button->setProperty("columnsPerRow", 20);
+    m_pColumns10Button->setChecked(true);
+
+    QButtonGroup *pColumnsButtonGroup = new QButtonGroup(this);
+    pColumnsButtonGroup->setExclusive(true);
+    pColumnsButtonGroup->addButton(m_pColumns5Button);
+    pColumnsButtonGroup->addButton(m_pColumns10Button);
+    pColumnsButtonGroup->addButton(m_pColumns20Button);
+
+    connect(m_pColumns5Button, &QPushButton::clicked, this, &SpriteSheetView::OnColumnsButtonClicked);
+    connect(m_pColumns10Button, &QPushButton::clicked, this, &SpriteSheetView::OnColumnsButtonClicked);
+    connect(m_pColumns20Button, &QPushButton::clicked, this, &SpriteSheetView::OnColumnsButtonClicked);
 
     QLabel *pStripTitle = new QLabel(QStringLiteral("스트립 미리보기 (현재 순서)"), this);
     QLabel *pZoomTitle = new QLabel(QStringLiteral("선택 타일 확대"), this);
@@ -122,8 +158,15 @@ void SpriteSheetView::InitUi()
     pMainRowLayout->addWidget(pLeftPanel, 1);
     pMainRowLayout->addWidget(pRightPanel);
 
+    QHBoxLayout *pStripTitleLayout = new QHBoxLayout();
+    pStripTitleLayout->addWidget(pStripTitle);
+    pStripTitleLayout->addStretch(1);
+    pStripTitleLayout->addWidget(m_pColumns5Button);
+    pStripTitleLayout->addWidget(m_pColumns10Button);
+    pStripTitleLayout->addWidget(m_pColumns20Button);
+
     QVBoxLayout *pMainLayout = new QVBoxLayout(this);
-    pMainLayout->addWidget(pStripTitle);
+    pMainLayout->addLayout(pStripTitleLayout);
     pMainLayout->addWidget(m_pStripScrollArea);
     pMainLayout->addLayout(pMainRowLayout, 1);
 
@@ -270,6 +313,18 @@ void SpriteSheetView::OnToggleExcludeClicked()
     m_pToggleExcludeButton->setText(bNowExcluded ? QStringLiteral("복귀") : QStringLiteral("제외"));
 
     HandleReorderChanged();
+}
+
+void SpriteSheetView::OnColumnsButtonClicked()
+{
+    QPushButton *pButton = qobject_cast<QPushButton*>(sender());
+    if (pButton == nullptr)
+    {
+        return;
+    }
+
+    m_nColumnsPerRow = pButton->property("columnsPerRow").toInt();
+    UpdateStripPreview();
 }
 
 void SpriteSheetView::MoveCurrentRow(int nOffset)
@@ -463,20 +518,43 @@ void SpriteSheetView::UpdateStripPreview()
         return;
     }
 
-    int nWidth = m_nTileSize * vecTiles.size();
-    QImage imageStrip(nWidth, m_nTileSize, QImage::Format_ARGB32);
-    imageStrip.fill(Qt::transparent);
+    // 원본 타일 크기(16x16, 64x64 등)와 무관하게 셀은 항상 kGridCellSize로 고정 표시하고,
+    // 한 줄에 m_nColumnsPerRow개씩 배치한 뒤 넘치면 다음 줄로 격자 형태로 이어간다.
+    int nCellWidth = kGridCellSize + kGridCellSpacing;
+    int nCellHeight = kGridCellSize + kGridNumberAreaHeight + kGridCellSpacing;
+    int nRowCount = (vecTiles.size() + m_nColumnsPerRow - 1) / m_nColumnsPerRow;
 
-    QPainter painter(&imageStrip);
+    int nCanvasWidth = nCellWidth * m_nColumnsPerRow + kGridCellSpacing;
+    int nCanvasHeight = nCellHeight * nRowCount + kGridCellSpacing;
+
+    QImage imageGrid(nCanvasWidth, nCanvasHeight, QImage::Format_ARGB32);
+    imageGrid.fill(Qt::transparent);
+
+    QPainter painter(&imageGrid);
+
+    QFont oFont = painter.font();
+    oFont.setPixelSize(11);
+    painter.setFont(oFont);
+    painter.setPen(Qt::white);
+
     for (int i = 0; i < vecTiles.size(); ++i)
     {
-        painter.drawImage(i * m_nTileSize, 0, vecTiles.at(i));
+        int nRow = i / m_nColumnsPerRow;
+        int nCol = i % m_nColumnsPerRow;
+
+        int nCellX = kGridCellSpacing + nCol * nCellWidth;
+        int nCellY = kGridCellSpacing + nRow * nCellHeight;
+
+        QImage imageScaled = vecTiles.at(i).scaled(kGridCellSize, kGridCellSize, Qt::KeepAspectRatio, Qt::FastTransformation);
+        int nImageX = nCellX + (kGridCellSize - imageScaled.width()) / 2;
+        int nImageY = nCellY + (kGridCellSize - imageScaled.height()) / 2;
+        painter.drawImage(nImageX, nImageY, imageScaled);
+
+        QRect oNumberRect(nCellX, nCellY + kGridCellSize, kGridCellSize, kGridNumberAreaHeight);
+        painter.drawText(oNumberRect, Qt::AlignHCenter | Qt::AlignVCenter, QString::number(i));
     }
     painter.end();
 
-    int nZoom = (m_nTileSize <= 16) ? 4 : 2;
-    QImage imageZoomed = imageStrip.scaled(imageStrip.width() * nZoom, imageStrip.height() * nZoom, Qt::KeepAspectRatio, Qt::FastTransformation);
-
-    m_pStripPreviewLabel->setPixmap(QPixmap::fromImage(imageZoomed));
-    m_pStripPreviewLabel->setFixedSize(imageZoomed.size());
+    m_pStripPreviewLabel->setPixmap(QPixmap::fromImage(imageGrid));
+    m_pStripPreviewLabel->setFixedSize(imageGrid.size());
 }
