@@ -30,6 +30,11 @@ namespace
     const int kGridNumberAreaHeight = 16;
     // 셀 사이/캔버스 가장자리 여백(px).
     const int kGridCellSpacing = 4;
+
+    // 스트립 미리보기에서 스크롤 없이 안정적으로 보여줄 세로 줄 수.
+    const int kStripPreviewVisibleRowCount = 5;
+    // 위 줄 수만큼의 격자 행이 잘리지 않고 보이도록 계산한 스트립 영역 고정 높이(px).
+    const int kStripScrollAreaHeight = (kGridCellSize + kGridNumberAreaHeight + kGridCellSpacing) * kStripPreviewVisibleRowCount + kGridCellSpacing;
 }
 
 SpriteSheetView::SpriteSheetView(QWidget *pParent)
@@ -45,7 +50,7 @@ SpriteSheetView::SpriteSheetView(QWidget *pParent)
     , m_pColumns10Button(nullptr)
     , m_pColumns20Button(nullptr)
     , m_nTileSize(0)
-    , m_nColumnsPerRow(10)
+    , m_nColumnsPerRow(20)
 {
     InitUi();
 }
@@ -78,7 +83,7 @@ void SpriteSheetView::InitUi()
     m_pStripScrollArea = new QScrollArea(this);
     m_pStripScrollArea->setWidget(m_pStripPreviewLabel);
     m_pStripScrollArea->setWidgetResizable(false);
-    m_pStripScrollArea->setFixedHeight(180);
+    m_pStripScrollArea->setFixedHeight(kStripScrollAreaHeight);
     m_pStripScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_pStripScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
@@ -96,7 +101,7 @@ void SpriteSheetView::InitUi()
     m_pColumns5Button->setProperty("columnsPerRow", 5);
     m_pColumns10Button->setProperty("columnsPerRow", 10);
     m_pColumns20Button->setProperty("columnsPerRow", 20);
-    m_pColumns10Button->setChecked(true);
+    m_pColumns20Button->setChecked(true);
 
     QButtonGroup *pColumnsButtonGroup = new QButtonGroup(this);
     pColumnsButtonGroup->setExclusive(true);

@@ -41,7 +41,8 @@ MainWindow::MainWindow(QWidget *pParent)
     , m_pExportTilesBmp16Action(nullptr)
     , m_pTileInfoLabel(nullptr)
 {
-    resize(1300, 850);
+    // 스트립 미리보기가 기본값인 20개씩 x 5줄 격자를 스크롤 없이 보여줄 수 있도록 초기 창 크기를 확보.
+    resize(1450, 1100);
     setWindowTitle(QStringLiteral("스프라이트시트 뷰어/편집기"));
     setAcceptDrops(true);
 
