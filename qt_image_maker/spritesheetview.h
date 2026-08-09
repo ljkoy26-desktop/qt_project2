@@ -45,6 +45,7 @@ signals:
 private slots:
     void OnRowsMoved();
     void OnCurrentItemChanged(QListWidgetItem *pCurrent, QListWidgetItem *pPrevious);
+    void OnSelectionChanged();
     void OnMoveUpClicked();
     void OnMoveDownClicked();
     void OnToggleExcludeClicked();
@@ -57,8 +58,18 @@ private slots:
 private:
     void InitUi();
     void RenumberItems();
-    void MoveCurrentRow(int nOffset);
+    // 선택된 항목들을 row 오름차순으로 정렬해 반환한다(그룹 이동/삭제/제외 토글 등에서 공용으로 사용).
+    QVector<QListWidgetItem*> SortedSelectedItems() const;
+    // 인접한 두 row(nRowA < nRowB)에 있는 아이템의 위치를 서로 맞바꾼다.
+    void SwapRows(int nRowA, int nRowB);
+    // 선택된 항목 전체를 하나의 그룹으로 묶어 nOffset(-1 또는 +1)칸 이동시킨다.
+    void MoveSelectedRows(int nOffset);
+    // 선택된 항목 전체를 상대 순서를 유지한 채 맨 앞(bToFront=true) 또는 맨 뒤로 이동시킨다.
+    void MoveSelectedRowsToEdge(bool bToFront);
+    // 숫자를 입력해 이동하는 단일 선택 전용 동작(현재 currentRow 기준).
     void MoveCurrentRowTo(int nTargetRow);
+    // 선택된 항목들의 제외 상태를 일괄 통일해서 토글한다(하나라도 포함 상태면 전체 제외로, 전체 제외 상태면 전체 복귀로).
+    void ApplyExcludeToggle();
     void HandleReorderChanged();
     QIcon BuildTileIcon(const QImage &imageTile) const;
     QListWidgetItem* CreateTileItem(const QImage &imageTile, int nRow);

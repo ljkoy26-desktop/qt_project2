@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    qt_image_maker를 Release로 빌드하고, Qt/Visual C++가 설치되지 않은 윈도우 PC에서도
+    SpriteForge를 Release로 빌드하고, Qt/Visual C++가 설치되지 않은 윈도우 PC에서도
     바로 실행 가능하도록 필요한 DLL/플러그인을 모두 모은 배포용 폴더(dist)를 만든다.
 
 .PARAMETER QtDir
@@ -20,7 +20,7 @@ $ErrorActionPreference = "Stop"
 $ProjectDir = $PSScriptRoot
 $BuildDir   = Join-Path $ProjectDir "build-release"
 $DistDir    = Join-Path $ProjectDir "dist"
-$ExeName    = "qt_image_maker.exe"
+$ExeName    = "SpriteForge.exe"
 
 function Write-Step([string]$Message)
 {

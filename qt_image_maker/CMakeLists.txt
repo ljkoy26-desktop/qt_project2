@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(qt_image_maker VERSION 0.1 LANGUAGES CXX)
+project(SpriteForge VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -27,28 +27,28 @@ set(PROJECT_SOURCES
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
-    qt_add_executable(qt_image_maker
+    qt_add_executable(SpriteForge
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
     )
 else()
     if(ANDROID)
-        add_library(qt_image_maker SHARED
+        add_library(SpriteForge SHARED
             ${PROJECT_SOURCES}
         )
     else()
-        add_executable(qt_image_maker
+        add_executable(SpriteForge
             ${PROJECT_SOURCES}
         )
     endif()
 endif()
 
-target_link_libraries(qt_image_maker PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(SpriteForge PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 
 if(${QT_VERSION} VERSION_LESS 6.1.0)
-  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.qt_image_maker)
+  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.spriteforge)
 endif()
-set_target_properties(qt_image_maker PROPERTIES
+set_target_properties(SpriteForge PROPERTIES
     ${BUNDLE_ID_OPTION}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
@@ -57,12 +57,12 @@ set_target_properties(qt_image_maker PROPERTIES
 )
 
 include(GNUInstallDirs)
-install(TARGETS qt_image_maker
+install(TARGETS SpriteForge
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 if(QT_VERSION_MAJOR EQUAL 6)
-    qt_finalize_executable(qt_image_maker)
+    qt_finalize_executable(SpriteForge)
 endif()

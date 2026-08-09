@@ -44,7 +44,7 @@ MainWindow::MainWindow(QWidget *pParent)
     // 모니터 해상도(1080)를 넘지 않도록 초기 창 높이를 축소. 타일 격자는 창 크기에 맞춰
     // 자동으로 줄바꿈되므로 폭/높이가 줄어도 잘리지 않는다.
     resize(1450, 925);
-    setWindowTitle(QStringLiteral("스프라이트시트 뷰어/편집기"));
+    setWindowTitle(QStringLiteral("SpriteForge"));
     setAcceptDrops(true);
 
     InitCentralWidget();

@@ -14,6 +14,7 @@
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QPoint>
+#include <algorithm>
 
 namespace
 {
@@ -50,7 +51,7 @@ void SpriteSheetView::InitUi()
     m_pListWidget->setMovement(QListView::Snap);
     m_pListWidget->setDragDropMode(QAbstractItemView::InternalMove);
     m_pListWidget->setDefaultDropAction(Qt::MoveAction);
-    m_pListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_pListWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_pListWidget->setResizeMode(QListView::Adjust);
     m_pListWidget->setSpacing(kGridSpacing);
     m_pListWidget->setIconSize(QSize(kGridIconEdge, kGridIconEdge));
@@ -58,6 +59,7 @@ void SpriteSheetView::InitUi()
 
     connect(m_pListWidget->model(), &QAbstractItemModel::rowsMoved, this, &SpriteSheetView::OnRowsMoved);
     connect(m_pListWidget, &QListWidget::currentItemChanged, this, &SpriteSheetView::OnCurrentItemChanged);
+    connect(m_pListWidget, &QListWidget::itemSelectionChanged, this, &SpriteSheetView::OnSelectionChanged);
     connect(m_pListWidget, &QListWidget::customContextMenuRequested, this, &SpriteSheetView::OnListContextMenuRequested);
 
     m_pZoomLabel = new QLabel(this);
@@ -217,47 +219,150 @@ void SpriteSheetView::OnRowsMoved()
 
 void SpriteSheetView::OnMoveUpClicked()
 {
-    MoveCurrentRow(-1);
+    MoveSelectedRows(-1);
 }
 
 void SpriteSheetView::OnMoveDownClicked()
 {
-    MoveCurrentRow(1);
+    MoveSelectedRows(1);
 }
 
 void SpriteSheetView::OnToggleExcludeClicked()
 {
-    QListWidgetItem *pCurrent = m_pListWidget->currentItem();
-    if (pCurrent == nullptr)
+    ApplyExcludeToggle();
+}
+
+QVector<QListWidgetItem*> SpriteSheetView::SortedSelectedItems() const
+{
+    QVector<QListWidgetItem*> vecItems;
+    const QList<QListWidgetItem*> listSelected = m_pListWidget->selectedItems();
+    for (QListWidgetItem *pItem : listSelected)
+    {
+        vecItems.append(pItem);
+    }
+
+    std::sort(vecItems.begin(), vecItems.end(), [this](QListWidgetItem *pLeft, QListWidgetItem *pRight)
+    {
+        return m_pListWidget->row(pLeft) < m_pListWidget->row(pRight);
+    });
+
+    return vecItems;
+}
+
+void SpriteSheetView::SwapRows(int nRowA, int nRowB)
+{
+    QListWidgetItem *pItemB = m_pListWidget->takeItem(nRowB);
+    QListWidgetItem *pItemA = m_pListWidget->takeItem(nRowA);
+    m_pListWidget->insertItem(nRowA, pItemB);
+    m_pListWidget->insertItem(nRowB, pItemA);
+}
+
+void SpriteSheetView::MoveSelectedRows(int nOffset)
+{
+    QVector<QListWidgetItem*> vecSelected = SortedSelectedItems();
+    if (vecSelected.isEmpty())
     {
         return;
     }
 
-    bool bNowExcluded = !IsItemExcluded(pCurrent);
-    SetItemExcluded(pCurrent, bNowExcluded);
-    m_pToggleExcludeButton->setText(bNowExcluded ? QStringLiteral("복귀") : QStringLiteral("제외"));
+    QVector<int> vecRows;
+    for (QListWidgetItem *pItem : vecSelected)
+    {
+        vecRows.append(m_pListWidget->row(pItem));
+    }
+
+    if (nOffset < 0)
+    {
+        if (vecRows.first() <= 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < vecRows.size(); ++i)
+        {
+            SwapRows(vecRows.at(i) - 1, vecRows.at(i));
+        }
+    }
+    else if (nOffset > 0)
+    {
+        if (vecRows.last() >= m_pListWidget->count() - 1)
+        {
+            return;
+        }
+
+        for (int i = vecRows.size() - 1; i >= 0; --i)
+        {
+            SwapRows(vecRows.at(i), vecRows.at(i) + 1);
+        }
+    }
+    else
+    {
+        return;
+    }
+
+    for (QListWidgetItem *pItem : vecSelected)
+    {
+        pItem->setSelected(true);
+    }
+    m_pListWidget->setCurrentItem(vecSelected.last());
 
     HandleReorderChanged();
 }
 
-void SpriteSheetView::MoveCurrentRow(int nOffset)
+void SpriteSheetView::MoveSelectedRowsToEdge(bool bToFront)
 {
-    int nCurrentRow = m_pListWidget->currentRow();
-    if (nCurrentRow < 0)
+    QVector<QListWidgetItem*> vecSelected = SortedSelectedItems();
+    if (vecSelected.isEmpty())
     {
         return;
     }
 
-    int nNewRow = nCurrentRow + nOffset;
-    if (nNewRow < 0 || nNewRow >= m_pListWidget->count())
+    for (QListWidgetItem *pItem : vecSelected)
+    {
+        m_pListWidget->takeItem(m_pListWidget->row(pItem));
+    }
+
+    int nInsertRow = bToFront ? 0 : m_pListWidget->count();
+    for (QListWidgetItem *pItem : vecSelected)
+    {
+        m_pListWidget->insertItem(nInsertRow, pItem);
+        ++nInsertRow;
+    }
+
+    for (QListWidgetItem *pItem : vecSelected)
+    {
+        pItem->setSelected(true);
+    }
+    m_pListWidget->setCurrentItem(vecSelected.last());
+
+    HandleReorderChanged();
+}
+
+void SpriteSheetView::ApplyExcludeToggle()
+{
+    QVector<QListWidgetItem*> vecSelected = SortedSelectedItems();
+    if (vecSelected.isEmpty())
     {
         return;
     }
 
-    QListWidgetItem *pItem = m_pListWidget->takeItem(nCurrentRow);
-    m_pListWidget->insertItem(nNewRow, pItem);
-    m_pListWidget->setCurrentItem(pItem);
+    bool bHasIncluded = false;
+    for (QListWidgetItem *pItem : vecSelected)
+    {
+        if (!IsItemExcluded(pItem))
+        {
+            bHasIncluded = true;
+            break;
+        }
+    }
 
+    bool bNowExcluded = bHasIncluded;
+    for (QListWidgetItem *pItem : vecSelected)
+    {
+        SetItemExcluded(pItem, bNowExcluded);
+    }
+
+    OnSelectionChanged();
     HandleReorderChanged();
 }
 
@@ -290,14 +395,31 @@ void SpriteSheetView::OnListContextMenuRequested(const QPoint &oPos)
         return;
     }
 
-    m_pListWidget->setCurrentItem(pItem);
+    // 이미 선택된 항목을 우클릭하면 다중선택을 유지하고, 선택 안 된 항목이면 그 항목 하나로 선택을 전환한다.
+    if (!pItem->isSelected())
+    {
+        m_pListWidget->setCurrentItem(pItem);
+    }
+
+    QVector<QListWidgetItem*> vecSelected = SortedSelectedItems();
+
+    bool bHasIncluded = false;
+    for (QListWidgetItem *pSelectedItem : vecSelected)
+    {
+        if (!IsItemExcluded(pSelectedItem))
+        {
+            bHasIncluded = true;
+            break;
+        }
+    }
 
     QMenu oMenu(this);
     QAction *pActionToFront = oMenu.addAction(QStringLiteral("맨앞으로"));
     QAction *pActionToBack = oMenu.addAction(QStringLiteral("맨뒤로"));
-    QAction *pActionToggleExclude = oMenu.addAction(IsItemExcluded(pItem) ? QStringLiteral("이미지 복귀") : QStringLiteral("이미지 제외"));
+    QAction *pActionToggleExclude = oMenu.addAction(bHasIncluded ? QStringLiteral("이미지 제외") : QStringLiteral("이미지 복귀"));
     QAction *pActionRemove = oMenu.addAction(QStringLiteral("해당 이미지 제거"));
     QAction *pActionMoveToPosition = oMenu.addAction(QStringLiteral("숫자를 입력하여 이동"));
+    pActionMoveToPosition->setEnabled(vecSelected.size() == 1);
 
     QAction *pSelectedAction = oMenu.exec(m_pListWidget->mapToGlobal(oPos));
     if (pSelectedAction == nullptr)
@@ -329,12 +451,12 @@ void SpriteSheetView::OnListContextMenuRequested(const QPoint &oPos)
 
 void SpriteSheetView::OnMoveToFrontClicked()
 {
-    MoveCurrentRowTo(0);
+    MoveSelectedRowsToEdge(true);
 }
 
 void SpriteSheetView::OnMoveToBackClicked()
 {
-    MoveCurrentRowTo(m_pListWidget->count() - 1);
+    MoveSelectedRowsToEdge(false);
 }
 
 void SpriteSheetView::OnMoveToPositionClicked()
@@ -359,19 +481,26 @@ void SpriteSheetView::OnMoveToPositionClicked()
 
 void SpriteSheetView::OnRemoveItemClicked()
 {
-    QListWidgetItem *pCurrent = m_pListWidget->currentItem();
-    if (pCurrent == nullptr)
+    QVector<QListWidgetItem*> vecSelected = SortedSelectedItems();
+    if (vecSelected.isEmpty())
     {
         return;
     }
 
-    QMessageBox::StandardButton eButton = QMessageBox::question(this, QStringLiteral("이미지 제거"), QStringLiteral("정말로 지우겠습니까?"), QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    QString strMessage = (vecSelected.size() == 1)
+        ? QStringLiteral("정말로 지우겠습니까?")
+        : QStringLiteral("정말로 %1개 이미지를 지우겠습니까?").arg(vecSelected.size());
+
+    QMessageBox::StandardButton eButton = QMessageBox::question(this, QStringLiteral("이미지 제거"), strMessage, QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (eButton != QMessageBox::Yes)
     {
         return;
     }
 
-    delete m_pListWidget->takeItem(m_pListWidget->row(pCurrent));
+    for (int i = vecSelected.size() - 1; i >= 0; --i)
+    {
+        delete m_pListWidget->takeItem(m_pListWidget->row(vecSelected.at(i)));
+    }
 
     HandleReorderChanged();
 }
@@ -389,13 +518,8 @@ void SpriteSheetView::OnCurrentItemChanged(QListWidgetItem *pCurrent, QListWidge
     if (pCurrent == nullptr)
     {
         m_pZoomLabel->clear();
-        m_pToggleExcludeButton->setEnabled(false);
-        m_pToggleExcludeButton->setText(QStringLiteral("제외"));
         return;
     }
-
-    m_pToggleExcludeButton->setEnabled(true);
-    m_pToggleExcludeButton->setText(IsItemExcluded(pCurrent) ? QStringLiteral("복귀") : QStringLiteral("제외"));
 
     QImage imageTile = pCurrent->data(Qt::UserRole).value<QImage>();
     if (imageTile.isNull())
@@ -417,4 +541,28 @@ void SpriteSheetView::RenumberItems()
     {
         m_pListWidget->item(i)->setText(QString::number(i));
     }
+}
+
+void SpriteSheetView::OnSelectionChanged()
+{
+    QVector<QListWidgetItem*> vecSelected = SortedSelectedItems();
+    if (vecSelected.isEmpty())
+    {
+        m_pToggleExcludeButton->setEnabled(false);
+        m_pToggleExcludeButton->setText(QStringLiteral("제외"));
+        return;
+    }
+
+    bool bHasIncluded = false;
+    for (QListWidgetItem *pItem : vecSelected)
+    {
+        if (!IsItemExcluded(pItem))
+        {
+            bHasIncluded = true;
+            break;
+        }
+    }
+
+    m_pToggleExcludeButton->setEnabled(true);
+    m_pToggleExcludeButton->setText(bHasIncluded ? QStringLiteral("제외") : QStringLiteral("복귀"));
 }
